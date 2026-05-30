@@ -6,6 +6,7 @@
 #include "DevPZEM.h"
 #include "DevXYMDSensor.h"
 #include "DevOLED.h"
+#include "DevWifiManager.h"
 
 // --- Switch: Active Low, External Pull-up 10kΩ (ดู blueprint.md) ---
 DevSwitch sw1(34, false);
@@ -20,18 +21,67 @@ DevRelay relay3(4,  true);
 // --- OLED: I2C SDA=21, SCL=22 ---
 DevOLED oled;
 
+// --- WiFi Manager ---
+DevWifiManager wifiMgr(&oled, "ESP32-Setup");
+
+// ตรวจสอบว่า sw1 ค้างครบ HOLD_SEC วินาที — คืนค่า true ถ้าให้ reset
+static bool checkWifiResetHold(DevSwitch& sw, DevOLED& disp, int holdSec = 5) {
+  sw.begin();
+
+  // อ่านสถานะโดยตรง (ไม่ผ่าน debounce loop) เพื่อตรวจว่ากดอยู่ตั้งแต่แรก
+  if (!sw.readRawState()) {
+    return false;  // ไม่ได้กด — ข้ามไป
+  }
+
+  // กดอยู่ — เริ่มนับถอยหลัง
+  unsigned long start = millis();
+  for (int remain = holdSec; remain > 0; remain--) {
+    disp.showCountdown(remain, holdSec);
+
+    // รอ 1 วินาที โดยตรวจ raw state ทุก 50ms
+    unsigned long tick = millis();
+    while (millis() - tick < 1000) {
+      if (!sw.readRawState()) {
+        // ปล่อยก่อนครบ — ยกเลิก
+        disp.showMessage("WiFi Reset", "Cancelled", "");
+        delay(1000);
+        return false;
+      }
+      delay(50);
+    }
+  }
+
+  // ครบ 5 วินาที
+  disp.showMessage("WiFi Reset", "Resetting...", "");
+  delay(800);
+  return true;
+}
+
 void setup() {
   Serial.begin(115200);
 
-  sw1.begin();
+  oled.begin(21, 22);
+  oled.showMessage("Booting...", "", "");
+
   sw2.begin();
   sw3.begin();
-
   relay1.begin();
   relay2.begin();
   relay3.begin();
 
-  oled.begin(21, 22);
+  // ตรวจ sw1 ค้าง 5 วินาที เพื่อ reset WiFi
+  bool doReset = checkWifiResetHold(sw1, oled, 5);
+
+  // เชื่อมต่อ WiFi (บล็อกจนสำเร็จ)
+  wifiMgr.begin(doReset);
+
+  // แสดง IP หลังเชื่อมต่อ
+  String ip = wifiMgr.localIP().toString();
+  Serial.printf("WiFi connected. IP: %s\n", ip.c_str());
+  oled.showIP(ip.c_str());
+  delay(2000);
+
+  // แสดงสถานะ Relay เริ่มต้น
   oled.showRelayStatus(false, false, false);
 
   Serial.println("Ready — SW1/SW2/SW3 toggles Relay1/2/3");

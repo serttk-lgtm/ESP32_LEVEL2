@@ -74,6 +74,82 @@ public:
     display.display();
   }
 
+  // แสดง countdown นับถอยหลัง (วินาที) พร้อมข้อความกำกับ
+  void showCountdown(int seconds, int total, const char* title = "Hold to Reset WiFi") {
+    if (!ready) return;
+
+    display.clearDisplay();
+
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println(title);
+
+    // progress bar
+    int barW = map(total - seconds, 0, total, 0, 124);
+    display.drawRect(2, 14, 124, 10, SSD1306_WHITE);
+    display.fillRect(2, 14, barW, 10, SSD1306_WHITE);
+
+    // ตัวเลขนับถอยหลัง
+    display.setTextSize(4);
+    int x = (seconds >= 10) ? 44 : 52;
+    display.setCursor(x, 28);
+    display.print(seconds);
+
+    display.setTextSize(1);
+    display.setCursor(30, 56);
+    display.print("Release to cancel");
+
+    display.display();
+  }
+
+  // แสดง IP address หลังเชื่อมต่อ WiFi สำเร็จ
+  void showIP(const char* ip) {
+    if (!ready) return;
+
+    display.clearDisplay();
+
+    display.setTextSize(1);
+    display.setCursor(28, 0);
+    display.println("WiFi Connected");
+
+    display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+
+    display.setTextSize(1);
+    display.setCursor(0, 14);
+    display.println("IP Address:");
+
+    display.setTextSize(2);
+    // จัดกึ่งกลาง IP
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.getTextBounds(ip, 0, 0, &x1, &y1, &w, &h);
+    display.setCursor((128 - w) / 2, 28);
+    display.println(ip);
+
+    display.display();
+  }
+
+  // แสดงข้อความทั่วไป 3 บรรทัด
+  void showMessage(const char* line1, const char* line2 = "", const char* line3 = "") {
+    if (!ready) return;
+
+    display.clearDisplay();
+
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println(line1);
+    display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+
+    display.setTextSize(1);
+    display.setCursor(0, 16);
+    display.println(line2);
+
+    display.setCursor(0, 30);
+    display.println(line3);
+
+    display.display();
+  }
+
   bool isReady() const { return ready; }
 };
 
