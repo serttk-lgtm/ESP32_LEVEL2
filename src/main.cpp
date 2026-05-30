@@ -8,6 +8,7 @@
 #include "DevOLED.h"
 #include "DevWifiManager.h"
 #include "DevWeather.h"
+#include "DevWebServer.h"
 
 // --- Switch: Active Low, External Pull-up 10kΩ (ดู blueprint.md) ---
 DevSwitch sw1(34, false);
@@ -27,6 +28,9 @@ DevWifiManager wifiMgr(&oled, "ESP32-Setup");
 
 // --- Weather ---
 DevWeather weather;
+
+// --- Web Server ---
+DevWebServer webServer(&relay1, &relay2, &relay3, &weather);
 
 // อัปเดต OLED ด้วยข้อมูล Weather + สถานะ Relay ปัจจุบัน
 static void _updateDisplay() {
@@ -104,6 +108,10 @@ void setup() {
   // แสดงหน้า Weather + Relay status
   _updateDisplay();
 
+  // เริ่ม Web Server — ผูก callback อัปเดต OLED เมื่อ relay เปลี่ยนผ่าน web
+  webServer.setOnRelayChange(_updateDisplay);
+  webServer.begin();
+
   Serial.println("Ready — SW1/SW2/SW3 toggles Relay1/2/3");
 }
 
@@ -141,4 +149,7 @@ void loop() {
   if (changed) {
     _updateDisplay();
   }
+
+  // Web Server loop (WebSocket broadcast + cleanup)
+  webServer.loop();
 }
