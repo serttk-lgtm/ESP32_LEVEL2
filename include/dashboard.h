@@ -100,6 +100,26 @@ static const char DASHBOARD_HTML[] PROGMEM = R"rawhtml(
     </div>
   </div>
 
+  <!-- ── DS18B20 TEMPERATURE ── -->
+  <div class="card p-5">
+    <div class="card-header">
+      🌡 อุณหภูมิ DS18B20
+      <span class="ml-auto" id="ds18-sim-badge"></span>
+    </div>
+    <div class="flex flex-col items-center justify-center py-4 gap-2">
+      <div class="text-7xl font-bold text-rose-500 tracking-tight" id="ds18-temp">--</div>
+      <div class="text-slate-400 text-sm">°C · GPIO 14</div>
+      <div class="w-full mt-3">
+        <div class="flex justify-between text-xs text-slate-400 mb-1.5">
+          <span>ช่วงที่วัดได้</span><span>-55°C → 125°C</span>
+        </div>
+        <div class="gauge-track">
+          <div class="gauge-bar bg-rose-400" id="ds18-bar" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── OPEN WEATHER ── -->
   <div class="card p-5">
     <div class="card-header">
@@ -238,6 +258,22 @@ function render(d) {
         </button>`;
       rc.appendChild(row);
     });
+  }
+
+  // ── DS18B20 ──
+  if (d.ds18 !== undefined) {
+    const t = parseFloat(d.ds18.temp);
+    document.getElementById('ds18-temp').textContent = t.toFixed(2);
+    // progress bar: map -10°C→0%, 50°C→100%
+    const pct = Math.max(0, Math.min(100, (t + 10) / 60 * 100));
+    document.getElementById('ds18-bar').style.width = pct + '%';
+    // simulation badge
+    const badge = document.getElementById('ds18-sim-badge');
+    if (d.ds18.sim) {
+      badge.innerHTML = '<span class="text-xs font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full normal-case">SIM</span>';
+    } else {
+      badge.innerHTML = '<span class="text-xs font-semibold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full normal-case">LIVE</span>';
+    }
   }
 
   // ── Weather ──

@@ -8,6 +8,7 @@
 #include "dashboard.h"
 #include "DevRelay.h"
 #include "DevWeather.h"
+#include "DevDS18B20.h"
 
 class DevWebServer {
 private:
@@ -15,8 +16,9 @@ private:
   AsyncWebSocket  ws;
 
   // ชี้ไปยัง objects ใน main.cpp
-  DevRelay*   relay[3];
-  DevWeather* weather;
+  DevRelay*    relay[3];
+  DevWeather*  weather;
+  DevDS18B20*  ds18;
 
   unsigned long lastBroadcast = 0;
   static const unsigned long BROADCAST_INTERVAL = 2000; // ms
@@ -48,6 +50,10 @@ private:
     doc["wifi"]["ip"]   = WiFi.localIP().toString();
     doc["wifi"]["mac"]  = WiFi.macAddress();
     doc["wifi"]["rssi"] = WiFi.RSSI();
+
+    // DS18B20
+    doc["ds18"]["temp"] = serialized(String(ds18->getTemp(), 2));
+    doc["ds18"]["sim"]  = ds18->isSimMode();
 
     // system
     doc["sys"]["heap"]   = ESP.getFreeHeap();
@@ -103,8 +109,9 @@ private:
   }
 
 public:
-  DevWebServer(DevRelay* r1, DevRelay* r2, DevRelay* r3, DevWeather* wth)
-    : server(80), ws("/ws"), weather(wth) {
+  DevWebServer(DevRelay* r1, DevRelay* r2, DevRelay* r3,
+               DevWeather* wth, DevDS18B20* d18)
+    : server(80), ws("/ws"), weather(wth), ds18(d18) {
     relay[0] = r1;
     relay[1] = r2;
     relay[2] = r3;

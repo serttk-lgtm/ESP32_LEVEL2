@@ -9,14 +9,15 @@
 #include "DevOLED.h"
 #include "DevWifiManager.h"
 #include "DevWeather.h"
+#include "DevDS18B20.h"
 #include "DevWebServer.h"
 
-// --- Switch: Active Low, External Pull-up 10kΩ (ดู blueprint.md) ---
+// --- Switch: Active Low, External Pull-up 10kΩ ---
 DevSwitch sw1(34, false);
 DevSwitch sw2(35, false);
 DevSwitch sw3(32, false);
 
-// --- Relay: Active Low (ดู blueprint.md) ---
+// --- Relay: Active Low ---
 DevRelay relay1(17, true);
 DevRelay relay2(16, true);
 DevRelay relay3(4,  true);
@@ -30,42 +31,41 @@ DevWifiManager wifiMgr(&oled, "ESP32-Setup");
 // --- Weather ---
 DevWeather weather;
 
-// --- Web Server ---
-DevWebServer webServer(&relay1, &relay2, &relay3, &weather);
+// --- DS18B20: GPIO14 ---
+DevDS18B20 ds18(14);
 
-// อัปเดต OLED ด้วยข้อมูล Weather + สถานะ Relay + IP ปัจจุบัน
+// --- Web Server ---
+DevWebServer webServer(&relay1, &relay2, &relay3, &weather, &ds18);
+
+// อัปเดต OLED หน้าจอหลัก
 static void _updateDisplay() {
   const WeatherData& w = weather.getData();
   String ip = WiFi.localIP().toString();
   if (w.valid) {
-    oled.showWeather(w.temp, w.humidity, w.rainChance, w.pm25, w.aqi,
-                     aqiLabel(w.aqi),
-                     relay1.getState(), relay2.getState(), relay3.getState(),
-                     ip.c_str());
+    oled.showMain(ds18.getTemp(), ds18.isSimMode(),
+                  w.temp, w.humidity, w.rainChance,
+                  w.pm25, w.aqi, aqiLabel(w.aqi),
+                  relay1.getState(), relay2.getState(), relay3.getState(),
+                  ip.c_str());
   } else {
-    oled.showRelayStatus(relay1.getState(), relay2.getState(), relay3.getState());
+    // Weather ยังไม่มีข้อมูล — แสดงแค่ DS18B20 + Relay
+    oled.showMain(ds18.getTemp(), ds18.isSimMode(),
+                  0, 0, 0, 0, 0, "",
+                  relay1.getState(), relay2.getState(), relay3.getState(),
+                  ip.c_str());
   }
 }
 
 // ตรวจสอบว่า sw1 ค้างครบ HOLD_SEC วินาที — คืนค่า true ถ้าให้ reset
 static bool checkWifiResetHold(DevSwitch& sw, DevOLED& disp, int holdSec = 5) {
   sw.begin();
+  if (!sw.readRawState()) return false;
 
-  // อ่านสถานะโดยตรง (ไม่ผ่าน debounce loop) เพื่อตรวจว่ากดอยู่ตั้งแต่แรก
-  if (!sw.readRawState()) {
-    return false;  // ไม่ได้กด — ข้ามไป
-  }
-
-  // กดอยู่ — เริ่มนับถอยหลัง
-  unsigned long start = millis();
   for (int remain = holdSec; remain > 0; remain--) {
     disp.showCountdown(remain, holdSec);
-
-    // รอ 1 วินาที โดยตรวจ raw state ทุก 50ms
     unsigned long tick = millis();
     while (millis() - tick < 1000) {
       if (!sw.readRawState()) {
-        // ปล่อยก่อนครบ — ยกเลิก
         disp.showMessage("WiFi Reset", "Cancelled", "");
         delay(1000);
         return false;
@@ -73,8 +73,6 @@ static bool checkWifiResetHold(DevSwitch& sw, DevOLED& disp, int holdSec = 5) {
       delay(50);
     }
   }
-
-  // ครบ 5 วินาที
   disp.showMessage("WiFi Reset", "Resetting...", "");
   delay(800);
   return true;
@@ -92,13 +90,16 @@ void setup() {
   relay2.begin();
   relay3.begin();
 
+  // DS18B20 init (auto fallback to sim)
+  oled.showMessage("DS18B20", "Initializing...", "GPIO14");
+  ds18.begin();
+
   // ตรวจ sw1 ค้าง 5 วินาที เพื่อ reset WiFi
   bool doReset = checkWifiResetHold(sw1, oled, 5);
 
-  // เชื่อมต่อ WiFi (บล็อกจนสำเร็จ)
+  // เชื่อมต่อ WiFi
   wifiMgr.begin(doReset);
 
-  // แสดง IP หลังเชื่อมต่อ
   String ip = wifiMgr.localIP().toString();
   Serial.printf("WiFi connected. IP: %s\n", ip.c_str());
   oled.showIP(ip.c_str());
@@ -108,14 +109,12 @@ void setup() {
   oled.showMessage("Weather", "Fetching...", OWM_CITY_NAME);
   weather.update();
 
-  // แสดงหน้า Weather + Relay status
+  // อัปเดต OLED และเริ่ม Web Server
   _updateDisplay();
-
-  // เริ่ม Web Server — ผูก callback อัปเดต OLED เมื่อ relay เปลี่ยนผ่าน web
   webServer.setOnRelayChange(_updateDisplay);
   webServer.begin();
 
-  Serial.println("Ready — SW1/SW2/SW3 toggles Relay1/2/3");
+  Serial.println("Ready");
 }
 
 void loop() {
@@ -130,29 +129,30 @@ void loop() {
     Serial.printf("Relay1 = %s\n", relay1.getState() ? "ON" : "OFF");
     changed = true;
   }
-
   if (sw2.wasPressed()) {
     relay2.toggle();
     Serial.printf("Relay2 = %s\n", relay2.getState() ? "ON" : "OFF");
     changed = true;
   }
-
   if (sw3.wasPressed()) {
     relay3.toggle();
     Serial.printf("Relay3 = %s\n", relay3.getState() ? "ON" : "OFF");
     changed = true;
   }
 
-  // อัปเดต Weather ตามรอบเวลา
+  // DS18B20 อัปเดตทุก 2 วินาที
+  if (ds18.update()) changed = true;
+
+  // Weather อัปเดตตามรอบ
   if (weather.isDue()) {
     weather.update();
     changed = true;
   }
 
-  if (changed) {
-    _updateDisplay();
-  }
+  if (changed) _updateDisplay();
 
-  // Web Server loop (WebSocket broadcast + cleanup)
+  // สลับหน้า OLED อัตโนมัติทุก PAGE_INTERVAL ms
+  oled.tick();
+
   webServer.loop();
 }
