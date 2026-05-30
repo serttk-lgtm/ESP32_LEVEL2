@@ -9,6 +9,7 @@
 #include "DevRelay.h"
 #include "DevWeather.h"
 #include "DevDS18B20.h"
+#include "DevXYMDSensor.h"
 
 class DevWebServer {
 private:
@@ -16,9 +17,10 @@ private:
   AsyncWebSocket  ws;
 
   // ชี้ไปยัง objects ใน main.cpp
-  DevRelay*    relay[3];
-  DevWeather*  weather;
-  DevDS18B20*  ds18;
+  DevRelay*       relay[3];
+  DevWeather*     weather;
+  DevDS18B20*     ds18;
+  DevXYMDSensor*  xymd;
 
   unsigned long lastBroadcast = 0;
   static const unsigned long BROADCAST_INTERVAL = 2000; // ms
@@ -54,6 +56,12 @@ private:
     // DS18B20
     doc["ds18"]["temp"] = serialized(String(ds18->getTemp(), 2));
     doc["ds18"]["sim"]  = ds18->isSimMode();
+
+    // XYMD
+    doc["xymd"]["temp"] = serialized(String(xymd->getTemperature(), 1));
+    doc["xymd"]["hum"]  = serialized(String(xymd->getHumidity(), 1));
+    doc["xymd"]["sim"]  = xymd->isSimMode();
+    doc["xymd"]["id"]   = xymd->getSlaveID();
 
     // system
     doc["sys"]["heap"]   = ESP.getFreeHeap();
@@ -110,8 +118,8 @@ private:
 
 public:
   DevWebServer(DevRelay* r1, DevRelay* r2, DevRelay* r3,
-               DevWeather* wth, DevDS18B20* d18)
-    : server(80), ws("/ws"), weather(wth), ds18(d18) {
+               DevWeather* wth, DevDS18B20* d18, DevXYMDSensor* xym)
+    : server(80), ws("/ws"), weather(wth), ds18(d18), xymd(xym) {
     relay[0] = r1;
     relay[1] = r2;
     relay[2] = r3;

@@ -34,29 +34,33 @@ DevWeather weather;
 // --- DS18B20: GPIO14 ---
 DevDS18B20 ds18(14);
 
-// --- Web Server ---
-DevWebServer webServer(&relay1, &relay2, &relay3, &weather, &ds18);
+// --- XY-MD03: Serial0, Slave ID=2 ---
+// Serial0 ใช้ร่วมกับ USB Serial ผ่าน switch สลับ RS232/RS485
+DevXYMDSensor xymd(&Serial, 2, 3000);
 
-// อัปเดต OLED หน้าจอหลัก
+// --- Web Server ---
+DevWebServer webServer(&relay1, &relay2, &relay3, &weather, &ds18, &xymd);
+
+// ── อัปเดต OLED ──────────────────────────────────────────────
 static void _updateDisplay() {
   const WeatherData& w = weather.getData();
   String ip = WiFi.localIP().toString();
-  if (w.valid) {
-    oled.showMain(ds18.getTemp(), ds18.isSimMode(),
-                  w.temp, w.humidity, w.rainChance,
-                  w.pm25, w.aqi, aqiLabel(w.aqi),
-                  relay1.getState(), relay2.getState(), relay3.getState(),
-                  ip.c_str());
-  } else {
-    // Weather ยังไม่มีข้อมูล — แสดงแค่ DS18B20 + Relay
-    oled.showMain(ds18.getTemp(), ds18.isSimMode(),
-                  0, 0, 0, 0, 0, "",
-                  relay1.getState(), relay2.getState(), relay3.getState(),
-                  ip.c_str());
-  }
+
+  oled.showMain(
+    ds18.getTemp(),        ds18.isSimMode(),
+    xymd.getTemperature(), xymd.getHumidity(), xymd.isSimMode(),
+    w.valid ? w.temp  : 0,
+    w.valid ? w.humidity : 0,
+    w.valid ? w.rainChance : 0,
+    w.valid ? w.pm25  : 0,
+    w.valid ? w.aqi   : 0,
+    w.valid ? aqiLabel(w.aqi) : "--",
+    relay1.getState(), relay2.getState(), relay3.getState(),
+    ip.c_str()
+  );
 }
 
-// ตรวจสอบว่า sw1 ค้างครบ HOLD_SEC วินาที — คืนค่า true ถ้าให้ reset
+// ── WiFi reset hold ───────────────────────────────────────────
 static bool checkWifiResetHold(DevSwitch& sw, DevOLED& disp, int holdSec = 5) {
   sw.begin();
   if (!sw.readRawState()) return false;
@@ -90,14 +94,12 @@ void setup() {
   relay2.begin();
   relay3.begin();
 
-  // DS18B20 init (auto fallback to sim)
+  // DS18B20 — ไม่ใช้ Serial ไม่กระทบ Serial0
   oled.showMessage("DS18B20", "Initializing...", "GPIO14");
   ds18.begin();
 
-  // ตรวจ sw1 ค้าง 5 วินาที เพื่อ reset WiFi
+  // WiFi reset check (ก่อน re-init Serial0 เพื่อ Modbus)
   bool doReset = checkWifiResetHold(sw1, oled, 5);
-
-  // เชื่อมต่อ WiFi
   wifiMgr.begin(doReset);
 
   String ip = wifiMgr.localIP().toString();
@@ -105,11 +107,15 @@ void setup() {
   oled.showIP(ip.c_str());
   delay(2000);
 
-  // ดึงข้อมูล Weather ครั้งแรก
+  // XY-MD03 — begin() จะ reinit Serial0 เป็น 9600 สำหรับ Modbus
+  // หลังจาก WiFiManager เสร็จแล้ว (ไม่ใช้ Serial0 แล้ว)
+  oled.showMessage("XY-MD03", "Initializing...", "Serial0 ID:2");
+  xymd.begin(9600);
+
+  // Weather
   oled.showMessage("Weather", "Fetching...", OWM_CITY_NAME);
   weather.update();
 
-  // อัปเดต OLED และเริ่ม Web Server
   _updateDisplay();
   webServer.setOnRelayChange(_updateDisplay);
   webServer.begin();
@@ -140,10 +146,9 @@ void loop() {
     changed = true;
   }
 
-  // DS18B20 อัปเดตทุก 2 วินาที
-  if (ds18.update()) changed = true;
+  if (ds18.update())   changed = true;
+  if (xymd.update())   changed = true;
 
-  // Weather อัปเดตตามรอบ
   if (weather.isDue()) {
     weather.update();
     changed = true;
@@ -151,8 +156,6 @@ void loop() {
 
   if (changed) _updateDisplay();
 
-  // สลับหน้า OLED อัตโนมัติทุก PAGE_INTERVAL ms
   oled.tick();
-
   webServer.loop();
 }

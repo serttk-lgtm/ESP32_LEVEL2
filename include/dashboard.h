@@ -120,6 +120,33 @@ static const char DASHBOARD_HTML[] PROGMEM = R"rawhtml(
     </div>
   </div>
 
+  <!-- ── XYMD SENSOR ── -->
+  <div class="card p-5">
+    <div class="card-header">
+      🌡 XY-MD03 (ID:2)
+      <span class="ml-auto" id="xymd-sim-badge"></span>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div class="val-box">
+        <div class="text-4xl font-bold text-teal-500" id="xymd-temp">--</div>
+        <div class="text-xs text-slate-400 mt-1">อุณหภูมิ °C</div>
+        <div class="gauge-track mt-2">
+          <div class="gauge-bar bg-teal-400" id="xymd-temp-bar" style="width:0%"></div>
+        </div>
+      </div>
+      <div class="val-box">
+        <div class="text-4xl font-bold text-cyan-500" id="xymd-hum">--</div>
+        <div class="text-xs text-slate-400 mt-1">ความชื้น %</div>
+        <div class="gauge-track mt-2">
+          <div class="gauge-bar bg-cyan-400" id="xymd-hum-bar" style="width:0%"></div>
+        </div>
+      </div>
+      <div class="col-span-2 text-xs text-slate-400 text-center">
+        Modbus RTU · Serial0 · 9600 8N1
+      </div>
+    </div>
+  </div>
+
   <!-- ── OPEN WEATHER ── -->
   <div class="card p-5">
     <div class="card-header">
@@ -258,6 +285,22 @@ function render(d) {
         </button>`;
       rc.appendChild(row);
     });
+  }
+
+  // ── XYMD ──
+  if (d.xymd !== undefined) {
+    const xt = parseFloat(d.xymd.temp);
+    const xh = parseFloat(d.xymd.hum);
+    document.getElementById('xymd-temp').textContent = xt.toFixed(1);
+    document.getElementById('xymd-hum').textContent  = xh.toFixed(1) + '%';
+    document.getElementById('xymd-temp-bar').style.width =
+      Math.max(0, Math.min(100, (xt / 50) * 100)) + '%';
+    document.getElementById('xymd-hum-bar').style.width  =
+      Math.max(0, Math.min(100, xh)) + '%';
+    const xbadge = document.getElementById('xymd-sim-badge');
+    xbadge.innerHTML = d.xymd.sim
+      ? '<span class="text-xs font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full normal-case">SIM</span>'
+      : '<span class="text-xs font-semibold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full normal-case">LIVE</span>';
   }
 
   // ── DS18B20 ──
