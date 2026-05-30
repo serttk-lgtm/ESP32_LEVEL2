@@ -10,6 +10,7 @@
 #include "DevWifiManager.h"
 #include "DevWeather.h"
 #include "DevDS18B20.h"
+#include "DevMQTT.h"
 #include "DevWebServer.h"
 
 // --- Switch: Active Low, External Pull-up 10kΩ ---
@@ -35,8 +36,10 @@ DevWeather weather;
 DevDS18B20 ds18(14);
 
 // --- XY-MD03: Serial0, Slave ID=2 ---
-// Serial0 ใช้ร่วมกับ USB Serial ผ่าน switch สลับ RS232/RS485
 DevXYMDSensor xymd(&Serial, 2, 3000);
+
+// --- MQTT ---
+DevMQTT mqtt(&relay1, &relay2, &relay3, &weather, &ds18, &xymd);
 
 // --- Web Server ---
 DevWebServer webServer(&relay1, &relay2, &relay3, &weather, &ds18, &xymd);
@@ -49,15 +52,24 @@ static void _updateDisplay() {
   oled.showMain(
     ds18.getTemp(),        ds18.isSimMode(),
     xymd.getTemperature(), xymd.getHumidity(), xymd.isSimMode(),
-    w.valid ? w.temp  : 0,
-    w.valid ? w.humidity : 0,
+    w.valid ? w.temp       : 0,
+    w.valid ? w.humidity   : 0,
     w.valid ? w.rainChance : 0,
-    w.valid ? w.pm25  : 0,
-    w.valid ? w.aqi   : 0,
+    w.valid ? w.pm25       : 0,
+    w.valid ? w.aqi        : 0,
     w.valid ? aqiLabel(w.aqi) : "--",
     relay1.getState(), relay2.getState(), relay3.getState(),
     ip.c_str()
   );
+}
+
+// ── relay toggle จาก physical switch ─────────────────────────
+static void _toggleRelay(int n) {
+  DevRelay* r[] = {&relay1, &relay2, &relay3};
+  r[n-1]->toggle();
+  Serial.printf("Relay%d = %s\n", n, r[n-1]->getState() ? "ON" : "OFF");
+  mqtt.publishRelayState(n);
+  _updateDisplay();
 }
 
 // ── WiFi reset hold ───────────────────────────────────────────
@@ -94,32 +106,42 @@ void setup() {
   relay2.begin();
   relay3.begin();
 
-  // DS18B20 — ไม่ใช้ Serial ไม่กระทบ Serial0
   oled.showMessage("DS18B20", "Initializing...", "GPIO14");
   ds18.begin();
 
-  // WiFi reset check (ก่อน re-init Serial0 เพื่อ Modbus)
   bool doReset = checkWifiResetHold(sw1, oled, 5);
   wifiMgr.begin(doReset);
 
   String ip = wifiMgr.localIP().toString();
-  Serial.printf("WiFi connected. IP: %s\n", ip.c_str());
   oled.showIP(ip.c_str());
   delay(2000);
 
-  // XY-MD03 — begin() จะ reinit Serial0 เป็น 9600 สำหรับ Modbus
-  // หลังจาก WiFiManager เสร็จแล้ว (ไม่ใช้ Serial0 แล้ว)
   oled.showMessage("XY-MD03", "Initializing...", "Serial0 ID:2");
   xymd.begin(9600);
 
-  // Weather
   oled.showMessage("Weather", "Fetching...", OWM_CITY_NAME);
   weather.update();
 
-  _updateDisplay();
-  webServer.setOnRelayChange(_updateDisplay);
+  // MQTT — callback อัปเดต OLED + publish relay เมื่อถูกสั่งผ่าน MQTT
+  auto mqttRelayChangedCb = []() {
+    _updateDisplay();
+    // publish state ของทุก relay (MQTT callback handle ไว้แล้ว relay เดียว)
+  };
+  mqtt.setOnRelayChange(mqttRelayChangedCb);
+  oled.showMessage("MQTT", "Connecting...", MQTT_HOST);
+  mqtt.begin();
+
+  // Web Server
+  webServer.setOnRelayChange([]() {
+    _updateDisplay();
+    // sync relay state กลับ MQTT เมื่อ toggle จาก Web
+    mqtt.publishRelayState(1);
+    mqtt.publishRelayState(2);
+    mqtt.publishRelayState(3);
+  });
   webServer.begin();
 
+  _updateDisplay();
   Serial.println("Ready");
 }
 
@@ -128,34 +150,22 @@ void loop() {
   sw2.update();
   sw3.update();
 
-  bool changed = false;
+  if (sw1.wasPressed()) _toggleRelay(1);
+  if (sw2.wasPressed()) _toggleRelay(2);
+  if (sw3.wasPressed()) _toggleRelay(3);
 
-  if (sw1.wasPressed()) {
-    relay1.toggle();
-    Serial.printf("Relay1 = %s\n", relay1.getState() ? "ON" : "OFF");
-    changed = true;
-  }
-  if (sw2.wasPressed()) {
-    relay2.toggle();
-    Serial.printf("Relay2 = %s\n", relay2.getState() ? "ON" : "OFF");
-    changed = true;
-  }
-  if (sw3.wasPressed()) {
-    relay3.toggle();
-    Serial.printf("Relay3 = %s\n", relay3.getState() ? "ON" : "OFF");
-    changed = true;
-  }
-
-  if (ds18.update())   changed = true;
-  if (xymd.update())   changed = true;
+  if (ds18.update()) _updateDisplay();
+  if (xymd.update()) _updateDisplay();
 
   if (weather.isDue()) {
     weather.update();
-    changed = true;
+    _updateDisplay();
   }
 
-  if (changed) _updateDisplay();
+  // sync MQTT connected state → Web dashboard
+  webServer.setMqttConnected(mqtt.isConnected());
 
+  mqtt.loop();
   oled.tick();
   webServer.loop();
 }

@@ -6,6 +6,7 @@
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 #include "dashboard.h"
+#include "config.h"
 #include "DevRelay.h"
 #include "DevWeather.h"
 #include "DevDS18B20.h"
@@ -24,6 +25,7 @@ private:
 
   unsigned long lastBroadcast = 0;
   static const unsigned long BROADCAST_INTERVAL = 2000; // ms
+  bool mqttConnected = false;
 
   void (*onRelayChange)() = nullptr; // callback → เรียก _updateDisplay() ใน main.cpp
 
@@ -62,6 +64,20 @@ private:
     doc["xymd"]["hum"]  = serialized(String(xymd->getHumidity(), 1));
     doc["xymd"]["sim"]  = xymd->isSimMode();
     doc["xymd"]["id"]   = xymd->getSlaveID();
+
+    // MQTT topics info (static — ไม่ต้องรู้ connected state ตรงนี้)
+    doc["mqtt"]["host"]         = MQTT_HOST;
+    doc["mqtt"]["port"]         = MQTT_PORT;
+    doc["mqtt"]["base"]         = MQTT_BASE;
+    doc["mqtt"]["connected"]    = mqttConnected;
+    doc["mqtt"]["t_telemetry"]  = String(MQTT_BASE) + "/telemetry";
+    doc["mqtt"]["t_status"]     = String(MQTT_BASE) + "/status";
+    doc["mqtt"]["t_r1_state"]   = String(MQTT_BASE) + "/relay/1/state";
+    doc["mqtt"]["t_r2_state"]   = String(MQTT_BASE) + "/relay/2/state";
+    doc["mqtt"]["t_r3_state"]   = String(MQTT_BASE) + "/relay/3/state";
+    doc["mqtt"]["t_r1_set"]     = String(MQTT_BASE) + "/relay/1/set";
+    doc["mqtt"]["t_r2_set"]     = String(MQTT_BASE) + "/relay/2/set";
+    doc["mqtt"]["t_r3_set"]     = String(MQTT_BASE) + "/relay/3/set";
 
     // system
     doc["sys"]["heap"]   = ESP.getFreeHeap();
@@ -126,6 +142,7 @@ public:
   }
 
   void setOnRelayChange(void (*cb)()) { onRelayChange = cb; }
+  void setMqttConnected(bool v)       { mqttConnected = v; }
 
   void begin() {
     // WebSocket handler

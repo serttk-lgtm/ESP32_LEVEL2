@@ -70,6 +70,14 @@ static const char DASHBOARD_HTML[] PROGMEM = R"rawhtml(
   /* Progress bar */
   .gauge-track { background:#e2e8f0; border-radius:999px; height:6px; overflow:hidden; }
   .gauge-bar   { height:6px; border-radius:999px; transition:width 0.6s ease; }
+  /* MQTT topic rows */
+  .mqtt-topic-row { display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; }
+  .mqtt-dir { font-size:0.65rem; font-weight:700; padding:1px 6px; border-radius:4px; flex-shrink:0; }
+  .mqtt-dir.pub { background:#dbeafe; color:#1d4ed8; }
+  .mqtt-dir.sub { background:#dcfce7; color:#15803d; }
+  .mqtt-topic { font-size:0.75rem; background:#f1f5f9; color:#334155;
+                padding:2px 8px; border-radius:6px; border:1px solid #e2e8f0; word-break:break-all; }
+  .mqtt-desc { font-size:0.72rem; color:#94a3b8; }
 </style>
 </head>
 <body class="p-4 md:p-6">
@@ -230,6 +238,74 @@ static const char DASHBOARD_HTML[] PROGMEM = R"rawhtml(
 
 </div><!-- end grid -->
 
+<!-- ═══ MQTT PANEL (full width) ═══ -->
+<div class="card p-5 mt-5">
+  <div class="card-header">
+    🔗 MQTT Broker
+    <span class="ml-2" id="mqtt-status-badge"></span>
+    <span class="ml-auto normal-case font-normal text-slate-400 text-xs" id="mqtt-host-label">--</span>
+  </div>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <!-- Publish topics -->
+    <div>
+      <p class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">📤 Publish Topics</p>
+      <div class="space-y-1.5" id="mqtt-pub-topics">
+        <div class="mqtt-topic-row">
+          <span class="mqtt-dir pub">PUB</span>
+          <code class="mqtt-topic" id="t-telemetry">--</code>
+          <span class="mqtt-desc">ข้อมูลทั้งหมด (ทุก 5s)</span>
+        </div>
+        <div class="mqtt-topic-row">
+          <span class="mqtt-dir pub">PUB</span>
+          <code class="mqtt-topic" id="t-status">--</code>
+          <span class="mqtt-desc">online / offline (LWT)</span>
+        </div>
+        <div class="mqtt-topic-row">
+          <span class="mqtt-dir pub">PUB</span>
+          <code class="mqtt-topic" id="t-r1-state">--</code>
+          <span class="mqtt-desc">Relay 1 state</span>
+        </div>
+        <div class="mqtt-topic-row">
+          <span class="mqtt-dir pub">PUB</span>
+          <code class="mqtt-topic" id="t-r2-state">--</code>
+          <span class="mqtt-desc">Relay 2 state</span>
+        </div>
+        <div class="mqtt-topic-row">
+          <span class="mqtt-dir pub">PUB</span>
+          <code class="mqtt-topic" id="t-r3-state">--</code>
+          <span class="mqtt-desc">Relay 3 state</span>
+        </div>
+      </div>
+    </div>
+    <!-- Subscribe topics -->
+    <div>
+      <p class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">📥 Subscribe Topics (Commands)</p>
+      <div class="space-y-1.5">
+        <div class="mqtt-topic-row">
+          <span class="mqtt-dir sub">SUB</span>
+          <code class="mqtt-topic" id="t-r1-set">--</code>
+          <span class="mqtt-desc">ON / OFF / TOGGLE</span>
+        </div>
+        <div class="mqtt-topic-row">
+          <span class="mqtt-dir sub">SUB</span>
+          <code class="mqtt-topic" id="t-r2-set">--</code>
+          <span class="mqtt-desc">ON / OFF / TOGGLE</span>
+        </div>
+        <div class="mqtt-topic-row">
+          <span class="mqtt-dir sub">SUB</span>
+          <code class="mqtt-topic" id="t-r3-set">--</code>
+          <span class="mqtt-desc">ON / OFF / TOGGLE</span>
+        </div>
+        <div class="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-500 font-mono">
+          <span class="font-bold text-slate-600">ตัวอย่าง:</span><br>
+          mosquitto_pub -h broker.hivemq.com \<br>
+          &nbsp;&nbsp;-t <span id="t-r1-set-ex" class="text-violet-600">--</span> -m ON
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <p class="text-center text-slate-400 text-xs mt-6">
   ESP32 Local Dashboard · Real-time via WebSocket
 </p>
@@ -352,6 +428,31 @@ function render(d) {
     const bar = document.getElementById('wifi-signal-bar');
     bar.style.width = pct + '%';
     bar.className   = `gauge-bar ${bColor}`;
+  }
+
+  // ── MQTT ──
+  if (d.mqtt) {
+    const m = d.mqtt;
+    document.getElementById('mqtt-host-label').textContent =
+      m.host + ':' + m.port;
+    const badge = document.getElementById('mqtt-status-badge');
+    badge.innerHTML = m.connected
+      ? '<span class="text-xs font-semibold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">Connected</span>'
+      : '<span class="text-xs font-semibold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Disconnected</span>';
+
+    const set = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val;
+    };
+    set('t-telemetry', m.t_telemetry);
+    set('t-status',    m.t_status);
+    set('t-r1-state',  m.t_r1_state);
+    set('t-r2-state',  m.t_r2_state);
+    set('t-r3-state',  m.t_r3_state);
+    set('t-r1-set',    m.t_r1_set);
+    set('t-r2-set',    m.t_r2_set);
+    set('t-r3-set',    m.t_r3_set);
+    set('t-r1-set-ex', m.t_r1_set);
   }
 
   // ── System ──
