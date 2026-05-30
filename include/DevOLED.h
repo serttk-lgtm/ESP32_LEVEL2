@@ -153,24 +153,26 @@ public:
   // แสดงข้อมูลสภาพอากาศ + Relay status bar มุมล่าง
   // Layout (128x64):
   //  ┌──────────────────────────┐
-  //  │ Nakhon Si Thammarat      │  row 0   size1
-  //  │ 32.5°C   Hum: 78%       │  row 10  size1 (temp size2 + hum size1)
-  //  │ Rain: 45%  AQI: 3 Mod   │  row 28  size1
-  //  │ PM2.5: 18.2 µg/m³       │  row 38  size1
-  //  ├──────────────────────────┤  line y=50
-  //  │ R1:■  R2:□  R3:■        │  row 53  size1  relay icons
+  //  │ IP:192.168.x.x           │  row 0   size1  (IP address)
+  //  │ 32.5°C   Hum: 78%       │  row 10  size2+1
+  //  │ Rain: 45%  AQI: 3 Mod   │  row 30  size1
+  //  │ PM2.5: 18.2 ug/m3       │  row 40  size1
+  //  ├──────────────────────────┤  line y=51
+  //  │ R1:■  R2:□  R3:■        │  row 54  size1  relay icons
   //  └──────────────────────────┘
   void showWeather(float temp, int hum, int rainPct, float pm25, int aqi,
                    const char* aqiStr,
-                   bool r1, bool r2, bool r3) {
+                   bool r1, bool r2, bool r3,
+                   const char* ip = "") {
     if (!ready) return;
     display.clearDisplay();
     display.setTextColor(SSD1306_WHITE);
 
-    // City name
+    // IP address row
     display.setTextSize(1);
     display.setCursor(0, 0);
-    display.print("Nakhon Si Thammarat");
+    display.print("IP:");
+    display.print(ip);
 
     // Temperature — ใหญ่
     display.setTextSize(2);

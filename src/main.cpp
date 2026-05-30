@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <WiFi.h>
 
 #include "DevIsoInput.h"
 #include "DevSwitch.h"
@@ -32,13 +33,15 @@ DevWeather weather;
 // --- Web Server ---
 DevWebServer webServer(&relay1, &relay2, &relay3, &weather);
 
-// อัปเดต OLED ด้วยข้อมูล Weather + สถานะ Relay ปัจจุบัน
+// อัปเดต OLED ด้วยข้อมูล Weather + สถานะ Relay + IP ปัจจุบัน
 static void _updateDisplay() {
   const WeatherData& w = weather.getData();
+  String ip = WiFi.localIP().toString();
   if (w.valid) {
     oled.showWeather(w.temp, w.humidity, w.rainChance, w.pm25, w.aqi,
                      aqiLabel(w.aqi),
-                     relay1.getState(), relay2.getState(), relay3.getState());
+                     relay1.getState(), relay2.getState(), relay3.getState(),
+                     ip.c_str());
   } else {
     oled.showRelayStatus(relay1.getState(), relay2.getState(), relay3.getState());
   }
