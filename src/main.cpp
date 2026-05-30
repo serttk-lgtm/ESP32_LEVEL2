@@ -7,6 +7,7 @@
 #include "DevXYMDSensor.h"
 #include "DevOLED.h"
 #include "DevWifiManager.h"
+#include "DevWeather.h"
 
 // --- Switch: Active Low, External Pull-up 10kΩ (ดู blueprint.md) ---
 DevSwitch sw1(34, false);
@@ -23,6 +24,21 @@ DevOLED oled;
 
 // --- WiFi Manager ---
 DevWifiManager wifiMgr(&oled, "ESP32-Setup");
+
+// --- Weather ---
+DevWeather weather;
+
+// อัปเดต OLED ด้วยข้อมูล Weather + สถานะ Relay ปัจจุบัน
+static void _updateDisplay() {
+  const WeatherData& w = weather.getData();
+  if (w.valid) {
+    oled.showWeather(w.temp, w.humidity, w.rainChance, w.pm25, w.aqi,
+                     aqiLabel(w.aqi),
+                     relay1.getState(), relay2.getState(), relay3.getState());
+  } else {
+    oled.showRelayStatus(relay1.getState(), relay2.getState(), relay3.getState());
+  }
+}
 
 // ตรวจสอบว่า sw1 ค้างครบ HOLD_SEC วินาที — คืนค่า true ถ้าให้ reset
 static bool checkWifiResetHold(DevSwitch& sw, DevOLED& disp, int holdSec = 5) {
@@ -81,8 +97,12 @@ void setup() {
   oled.showIP(ip.c_str());
   delay(2000);
 
-  // แสดงสถานะ Relay เริ่มต้น
-  oled.showRelayStatus(false, false, false);
+  // ดึงข้อมูล Weather ครั้งแรก
+  oled.showMessage("Weather", "Fetching...", OWM_CITY_NAME);
+  weather.update();
+
+  // แสดงหน้า Weather + Relay status
+  _updateDisplay();
 
   Serial.println("Ready — SW1/SW2/SW3 toggles Relay1/2/3");
 }
@@ -112,7 +132,13 @@ void loop() {
     changed = true;
   }
 
+  // อัปเดต Weather ตามรอบเวลา
+  if (weather.isDue()) {
+    weather.update();
+    changed = true;
+  }
+
   if (changed) {
-    oled.showRelayStatus(relay1.getState(), relay2.getState(), relay3.getState());
+    _updateDisplay();
   }
 }

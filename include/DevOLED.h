@@ -150,6 +150,87 @@ public:
     display.display();
   }
 
+  // แสดงข้อมูลสภาพอากาศ + Relay status bar มุมล่าง
+  // Layout (128x64):
+  //  ┌──────────────────────────┐
+  //  │ Nakhon Si Thammarat      │  row 0   size1
+  //  │ 32.5°C   Hum: 78%       │  row 10  size1 (temp size2 + hum size1)
+  //  │ Rain: 45%  AQI: 3 Mod   │  row 28  size1
+  //  │ PM2.5: 18.2 µg/m³       │  row 38  size1
+  //  ├──────────────────────────┤  line y=50
+  //  │ R1:■  R2:□  R3:■        │  row 53  size1  relay icons
+  //  └──────────────────────────┘
+  void showWeather(float temp, int hum, int rainPct, float pm25, int aqi,
+                   const char* aqiStr,
+                   bool r1, bool r2, bool r3) {
+    if (!ready) return;
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+
+    // City name
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.print("Nakhon Si Thammarat");
+
+    // Temperature — ใหญ่
+    display.setTextSize(2);
+    display.setCursor(0, 10);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%.1f", temp);
+    display.print(buf);
+    display.setTextSize(1);
+    display.print((char)247);  // degree symbol
+    display.print("C");
+
+    // Humidity — ขนาดเล็กข้างๆ
+    display.setTextSize(1);
+    display.setCursor(72, 10);
+    display.print("Hum:");
+    display.setCursor(72, 20);
+    snprintf(buf, sizeof(buf), "%d%%", hum);
+    display.print(buf);
+
+    // Rain chance
+    display.setCursor(0, 30);
+    snprintf(buf, sizeof(buf), "Rain:%d%%", rainPct);
+    display.print(buf);
+
+    // AQI
+    display.setCursor(66, 30);
+    snprintf(buf, sizeof(buf), "AQI:%d %s", aqi, aqiStr);
+    display.print(buf);
+
+    // PM2.5
+    display.setCursor(0, 40);
+    snprintf(buf, sizeof(buf), "PM2.5:%.1f ug/m3", pm25);
+    display.print(buf);
+
+    // divider
+    display.drawLine(0, 51, 127, 51, SSD1306_WHITE);
+
+    // Relay status icons มุมล่าง
+    display.setTextSize(1);
+    const char* states[3] = {r1 ? "R1\x02" : "R1\x01",
+                              r2 ? "R2\x02" : "R2\x01",
+                              r3 ? "R3\x02" : "R3\x01"};
+    // ใช้ filled/empty block แทน icon — char 219=█, 9=○ (ไม่มีใน font)
+    // วาด rect เล็กๆ แทน
+    const int rx[3] = {0, 44, 88};
+    for (int i = 0; i < 3; i++) {
+      display.setCursor(rx[i], 54);
+      display.print(i == 0 ? "R1" : i == 1 ? "R2" : "R3");
+      display.print(":");
+      bool on = (i == 0) ? r1 : (i == 1) ? r2 : r3;
+      if (on) {
+        display.fillRect(rx[i] + 18, 54, 8, 8, SSD1306_WHITE);
+      } else {
+        display.drawRect(rx[i] + 18, 54, 8, 8, SSD1306_WHITE);
+      }
+    }
+
+    display.display();
+  }
+
   bool isReady() const { return ready; }
 };
 

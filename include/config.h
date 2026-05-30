@@ -1,0 +1,17 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
+// ===== OpenWeatherMap =====
+// สมัครฟรีที่ https://openweathermap.org/api
+// แผน Free รองรับ Current Weather + Air Pollution API
+#define OWM_API_KEY   "1bef650d2c6ea7a91f58252948c2d325"
+
+// พิกัด นครศรีธรรมราช (ใช้ lat/lon แม่นยำกว่า city name)
+#define OWM_LAT       "8.4322"
+#define OWM_LON       "99.9631"
+#define OWM_CITY_NAME "Nakhon Si Thammarat"
+
+// อัปเดตทุกกี่วินาที (Free plan limit: 60 calls/min, แนะนำ 300s+)
+#define WEATHER_UPDATE_SEC  5000
+
+#endif // CONFIG_H
