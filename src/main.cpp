@@ -36,7 +36,7 @@ DevWeather weather;
 DevDS18B20 ds18(14);
 
 // --- XY-MD03: Serial0, Slave ID=2 ---
-DevXYMDSensor xymd(&Serial, 2, 3000);
+DevXYMDSensor xymd(&Serial, 2, 5000);
 
 // --- MQTT ---
 DevMQTT mqtt(&relay1, &relay2, &relay3, &weather, &ds18, &xymd);
@@ -116,9 +116,30 @@ void setup() {
   oled.showIP(ip.c_str());
   delay(2000);
 
-  oled.showMessage("XY-MD03", "Initializing...", "Serial0 ID:2");
-  xymd.begin(9600);
+  // XY-MD03: reinit Serial0 → 9600 Modbus
+  // Serial.print จะใช้งานไม่ได้หลังบรรทัดนี้ (Serial0 เปลี่ยน baud)
+  Serial.println("[XYMD] Initializing... Serial0 will switch to 9600");
+  Serial.flush();  // flush debug output ก่อน reinit
+  oled.showMessage("XY-MD03", "SlaveID:2", "Serial0 9600");
+  bool xymdOk = xymd.begin(9600);
+  if (!xymdOk) {
+    // ไม่พบที่ ID=2 — สแกนหา ID อื่น (1-10)
+    oled.showMessage("XY-MD03", "Scanning ID...", "");
+    uint8_t foundID = xymd.scanSlaveID(10);
+    if (foundID > 0) {
+      // พบที่ ID อื่น — ลอง begin ใหม่
+      char buf[24];
+      snprintf(buf, sizeof(buf), "Found ID:%d", foundID);
+      oled.showMessage("XY-MD03", buf, "Set ID=2 on sensor");
+      xymdOk = xymd.reconnect();
+    } else {
+      oled.showMessage("XY-MD03", "Not found", "Sim mode");
+    }
+  } else {
+    oled.showMessage("XY-MD03", "Found! ID:2", "");
+  }
 
+  delay(1000);  // ให้เวลา OLED แสดงผล XYMD status
   oled.showMessage("Weather", "Fetching...", OWM_CITY_NAME);
   weather.update();
 
